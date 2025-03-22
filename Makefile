@@ -1,5 +1,5 @@
-plugin.tar.gz: plugin.exe
+plugin.tar.gz: plugin.exe plugin.json
 	tar -czvf plugin.tar.gz plugin.exe plugin.json
 
-plugin.exe: plugin.go
-	go build -o plugin.exe plugin.go
+plugin.exe: *.go
+	go build -o plugin.exe *.go

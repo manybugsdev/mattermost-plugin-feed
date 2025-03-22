@@ -1,25 +1,35 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
+	"github.com/mattermost/mattermost/server/public/pluginapi"
 )
 
-// HelloWorldPlugin implements the interface expected by the Mattermost server to communicate
-// between the server and plugin processes.
-type HelloWorldPlugin struct {
+type Plugin struct {
 	plugin.MattermostPlugin
+
+	client        *pluginapi.Client
+	commandClient Command
 }
 
-// ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.
-func (p *HelloWorldPlugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Hello, world!")
+func (p *Plugin) OnActivate() error {
+
+	p.commandClient = NewCommandHandler(p.client)
+
+	return nil
 }
 
-// This example demonstrates a plugin that handles HTTP requests which respond by greeting the
-// world.
+func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+	response, err := p.commandClient.Handle(args)
+	if err != nil {
+		return nil, model.NewAppError("ExecuteCommand", "plugin.command.execute_command.app_error", nil, err.Error(), http.StatusInternalServerError)
+	}
+	return response, nil
+}
+
 func main() {
-	plugin.ClientMain(&HelloWorldPlugin{})
+	plugin.ClientMain(&Plugin{})
 }
