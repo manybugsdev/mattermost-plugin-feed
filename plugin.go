@@ -1,8 +1,6 @@
 package main
 
 import (
-	"net/http"
-
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
@@ -11,25 +9,38 @@ import (
 type Plugin struct {
 	plugin.MattermostPlugin
 
-	client        *pluginapi.Client
-	commandClient Command
+	client *pluginapi.Client
 }
 
 func (p *Plugin) OnActivate() error {
 
 	p.client = pluginapi.NewClient(p.API, p.Driver)
 
-	p.commandClient = NewCommandHandler(p.client)
+	err := p.client.SlashCommand.Register(&model.Command{
+		Trigger: "feed",
+	})
 
-	return nil
+	return err
+}
+
+func (p *Plugin) OnDeactivate() error {
+
+	p.client = pluginapi.NewClient(p.API, p.Driver)
+
+	err := p.client.SlashCommand.Register(&model.Command{
+		Trigger: "feed",
+	})
+
+	p.client.SlashCommand.Unregister("", "feed")
+	p.client.SlashCommand.Unregister("", "hello")
+
+	return err
 }
 
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
-	response, err := p.commandClient.Handle(args)
-	if err != nil {
-		return nil, model.NewAppError("ExecuteCommand", "plugin.command.execute_command.app_error", nil, err.Error(), http.StatusInternalServerError)
-	}
-	return response, nil
+	return &model.CommandResponse{
+		Text: "Feed!",
+	}, nil
 }
 
 func main() {
