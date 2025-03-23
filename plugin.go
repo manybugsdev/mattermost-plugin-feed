@@ -17,7 +17,11 @@ func (p *Plugin) OnActivate() error {
 	p.client = pluginapi.NewClient(p.API, p.Driver)
 
 	err := p.client.SlashCommand.Register(&model.Command{
-		Trigger: "feed",
+		Trigger:          "feed",
+		AutoComplete:     true,
+		AutoCompleteDesc: "Say hello to someone",
+		AutoCompleteHint: "[@username]",
+		AutocompleteData: model.NewAutocompleteData("feed", "[@username]", "Username to say hello to"),
 	})
 
 	return err
@@ -25,14 +29,7 @@ func (p *Plugin) OnActivate() error {
 
 func (p *Plugin) OnDeactivate() error {
 
-	p.client = pluginapi.NewClient(p.API, p.Driver)
-
-	err := p.client.SlashCommand.Register(&model.Command{
-		Trigger: "feed",
-	})
-
-	p.client.SlashCommand.Unregister("", "feed")
-	p.client.SlashCommand.Unregister("", "hello")
+	err := p.client.SlashCommand.Unregister("", "feed")
 
 	return err
 }
