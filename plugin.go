@@ -2,6 +2,9 @@ package main
 
 import (
 	"strings"
+	"time"
+
+	"slices"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
@@ -14,8 +17,8 @@ const hint = "[list|add|del] [url]"
 const kvkey = "feeds"
 
 type Feed struct {
-	url     string
-	updated string
+	Url     string
+	Updated string
 }
 
 type Plugin struct {
@@ -72,9 +75,7 @@ func valid(fields []string) bool {
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 	fields := strings.Fields(args.Command)
 	if !valid(fields) {
-		return &model.CommandResponse{
-			Text: "Invalid command",
-		}, nil
+		return response("Invalid command"), nil
 	}
 	switch fields[1] {
 	case "list":
@@ -84,21 +85,51 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	case "del":
 		return p.delFeed(fields[2])
 	}
-	return &model.CommandResponse{
-		Text: "Feed!",
-	}, nil
+	return response("Invalid command"), nil
 }
 
 func (p *Plugin) listFeeds() (*model.CommandResponse, *model.AppError) {
-	feeds := []Feed{}
-	p.client.KV.Get(kvkey, feeds)
-	text := "Feeds:\n"
+	feeds := make([]*Feed, 0)
+	p.client.KV.Get(kvkey, &feeds)
+	text := "Feeds:"
 	for _, feed := range feeds {
-		text += feed.Key + "\n"
+		text += feed.Url + ","
 	}
+	return response(text), nil
+}
+
+func response(text string) *model.CommandResponse {
 	return &model.CommandResponse{
 		Text: text,
-	}, nil
+	}
+}
+
+func (p *Plugin) addFeed(url string) (*model.CommandResponse, *model.AppError) {
+	feeds := make([]*Feed, 0)
+	p.client.KV.Get(kvkey, &feeds)
+	feeds = append(feeds, &Feed{Url: url, Updated: time.Now().Format(time.RFC3339)})
+	sucess, _ := p.client.KV.Set(kvkey, feeds)
+
+	if sucess {
+		return response("Feed added"), nil
+	}
+	return response("Feed not added"), nil
+}
+
+func (p *Plugin) delFeed(url string) (*model.CommandResponse, *model.AppError) {
+	feeds := make([]*Feed, 0)
+	p.client.KV.Get(kvkey, &feeds)
+	for i, feed := range feeds {
+		if feed.Url == url {
+			feeds = slices.Delete(feeds, i, i+1)
+			sucess, _ := p.client.KV.Set(kvkey, feeds)
+			if sucess {
+				return response("Feed deleted"), nil
+			}
+			return response("Feed not deleted"), nil
+		}
+	}
+	return response("Feed not found"), nil
 }
 
 func main() {
