@@ -1,7 +1,7 @@
 package main
 
 import (
-	"net/http"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -16,15 +16,20 @@ const trigger = "feed"
 const desc = "Manage your feeds"
 const hint = "[list|add|del] [url]"
 const kvkey = "feeds"
+const botName = "feedbot"
+const botDisplayName = "Feed Bot"
+const botDescription = "Feed Bot"
 
 type Feed struct {
-	Url     string
-	Updated string
+	Url       string
+	Updated   string
+	ChannelId string
 }
 
 type Plugin struct {
 	plugin.MattermostPlugin
 	client        *pluginapi.Client
+	botId         string
 	backgroundJob *cluster.Job
 }
 
@@ -41,9 +46,7 @@ func (p *Plugin) loadFeeds() []Feed {
 func (p *Plugin) fetchFeeds() {
 	feeds := p.loadFeeds()
 	for _, feed := range feeds {
-		resp, err := http.Get(feed.Url)
-		if err != nil {
-			
+		fmt.Println("Fetching feed: " + feed.Url)
 	}
 }
 
@@ -63,6 +66,18 @@ func (p *Plugin) OnActivate() error {
 		return err
 	}
 
+	botId, err := p.client.Bot.EnsureBot(&model.Bot{
+		Username:    botName,
+		DisplayName: botDisplayName,
+		Description: botDescription,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	p.botId = botId
+
 	job, err := cluster.Schedule(
 		p.API,
 		"BackgroundJob",
@@ -81,15 +96,11 @@ func (p *Plugin) OnActivate() error {
 
 func (p *Plugin) OnDeactivate() error {
 
-	err := p.client.SlashCommand.Unregister("", "feed")
-
-	if err != nil {
-		return err
-	}
+	p.client.SlashCommand.Unregister("", "feed")
 
 	if p.backgroundJob != nil {
-		err = p.backgroundJob.Close()
-		return err
+		p.backgroundJob.Close()
+
 	}
 
 	return nil
