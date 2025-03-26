@@ -91,9 +91,9 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 func (p *Plugin) listFeeds() (*model.CommandResponse, *model.AppError) {
 	feeds := make([]*Feed, 0)
 	p.client.KV.Get(kvkey, &feeds)
-	text := "Feeds:"
+	text := "Feeds:\n"
 	for _, feed := range feeds {
-		text += feed.Url + ","
+		text += feed.Url + "\n"
 	}
 	return response(text), nil
 }
