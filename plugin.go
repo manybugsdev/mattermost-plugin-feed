@@ -1,14 +1,15 @@
 package main
 
 import (
+	"net/http"
+	"slices"
 	"strings"
 	"time"
-
-	"slices"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
+	"github.com/mattermost/mattermost/server/public/pluginapi/cluster"
 )
 
 const trigger = "feed"
@@ -23,8 +24,27 @@ type Feed struct {
 
 type Plugin struct {
 	plugin.MattermostPlugin
+	client        *pluginapi.Client
+	backgroundJob *cluster.Job
+}
 
-	client *pluginapi.Client
+func (p *Plugin) saveFeeds(feeds []Feed) (bool, error) {
+	return p.client.KV.Set(kvkey, feeds)
+}
+
+func (p *Plugin) loadFeeds() []Feed {
+	feeds := []Feed{}
+	p.client.KV.Get(kvkey, &feeds)
+	return feeds
+}
+
+func (p *Plugin) fetchFeeds() {
+	feeds := p.loadFeeds()
+	for _, feed := range feeds {
+		resp, err := http.Get(feed.Url)
+		if err != nil {
+			
+	}
 }
 
 func (p *Plugin) OnActivate() error {
@@ -39,6 +59,23 @@ func (p *Plugin) OnActivate() error {
 		AutocompleteData: model.NewAutocompleteData(trigger, hint, desc),
 	})
 
+	if err != nil {
+		return err
+	}
+
+	job, err := cluster.Schedule(
+		p.API,
+		"BackgroundJob",
+		cluster.MakeWaitForRoundedInterval(20*time.Minute),
+		p.fetchFeeds,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	p.backgroundJob = job
+
 	return err
 }
 
@@ -46,7 +83,16 @@ func (p *Plugin) OnDeactivate() error {
 
 	err := p.client.SlashCommand.Unregister("", "feed")
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	if p.backgroundJob != nil {
+		err = p.backgroundJob.Close()
+		return err
+	}
+
+	return nil
 }
 
 func valid(fields []string) bool {
@@ -89,8 +135,7 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 }
 
 func (p *Plugin) listFeeds() (*model.CommandResponse, *model.AppError) {
-	feeds := make([]*Feed, 0)
-	p.client.KV.Get(kvkey, &feeds)
+	feeds := p.loadFeeds()
 	text := "Feeds:\n"
 	for _, feed := range feeds {
 		text += feed.Url + "\n"
@@ -105,10 +150,9 @@ func response(text string) *model.CommandResponse {
 }
 
 func (p *Plugin) addFeed(url string) (*model.CommandResponse, *model.AppError) {
-	feeds := make([]*Feed, 0)
-	p.client.KV.Get(kvkey, &feeds)
-	feeds = append(feeds, &Feed{Url: url, Updated: time.Now().Format(time.RFC3339)})
-	sucess, _ := p.client.KV.Set(kvkey, feeds)
+	feeds := p.loadFeeds()
+	feeds = append(feeds, Feed{Url: url, Updated: time.Now().Format(time.RFC3339)})
+	sucess, _ := p.saveFeeds(feeds)
 
 	if sucess {
 		return response("Feed added"), nil
@@ -124,12 +168,11 @@ func (p *Plugin) delFeed(url string) (*model.CommandResponse, *model.AppError) {
 		}
 		return response("All feeds deleted"), nil
 	}
-	feeds := make([]*Feed, 0)
-	p.client.KV.Get(kvkey, &feeds)
+	feeds := p.loadFeeds()
 	for i, feed := range feeds {
 		if feed.Url == url {
 			feeds = slices.Delete(feeds, i, i+1)
-			sucess, _ := p.client.KV.Set(kvkey, feeds)
+			sucess, _ := p.saveFeeds(feeds)
 			if sucess {
 				return response("Feed deleted"), nil
 			}
