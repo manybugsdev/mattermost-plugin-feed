@@ -117,6 +117,13 @@ func (p *Plugin) addFeed(url string) (*model.CommandResponse, *model.AppError) {
 }
 
 func (p *Plugin) delFeed(url string) (*model.CommandResponse, *model.AppError) {
+	if url == "all" {
+		err := p.client.KV.Delete(kvkey)
+		if err != nil {
+			return response("All feeds not deleted"), nil
+		}
+		return response("All feeds deleted"), nil
+	}
 	feeds := make([]*Feed, 0)
 	p.client.KV.Get(kvkey, &feeds)
 	for i, feed := range feeds {
