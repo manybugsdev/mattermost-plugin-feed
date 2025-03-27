@@ -18,6 +18,10 @@ const trigger = "feed"
 const desc = "Manage your feeds"
 const hint = "[list|add|del] [url]"
 const kvkey = "feeds"
+const botName = "feedbot"
+const botDisplayName = "Feed Bot"
+const botDescription = "Feed Bot"
+const fetchInterval = 1 * time.Minute
 
 type Feed struct {
 	Url       string
@@ -28,6 +32,7 @@ type Feed struct {
 type Plugin struct {
 	plugin.MattermostPlugin
 	client        *pluginapi.Client
+	botId         string
 	backgroundJob *cluster.Job
 }
 
@@ -35,6 +40,14 @@ func response(text string) *model.CommandResponse {
 	return &model.CommandResponse{
 		Text: text,
 	}
+}
+
+func (p *Plugin) BotPost(channelId string, text string) {
+	p.client.Post.CreatePost(&model.Post{
+		UserId:    p.botId,
+		ChannelId: channelId,
+		Message:   text,
+	})
 }
 
 func (p *Plugin) saveFeeds(feeds []Feed) (bool, error) {
@@ -51,12 +64,10 @@ func (p *Plugin) fetchFeeds() {
 	feeds := p.loadFeeds()
 	fp := gofeed.NewParser()
 	for _, feed := range feeds {
+		p.BotPost(feed.ChannelId, "hi all")
 		page, err := fp.ParseURL(feed.Url)
 		if err != nil {
-			p.client.Post.CreatePost(&model.Post{
-				ChannelId: feed.ChannelId,
-				Message:   fmt.Sprintf("Error fetching: %s", feed.Url),
-			})
+			p.BotPost(feed.ChannelId, fmt.Sprintf("Error fetching: %s", feed.Url))
 			continue
 		}
 		items := page.Items
@@ -71,10 +82,8 @@ func (p *Plugin) fetchFeeds() {
 				continue
 			}
 			feed.Updated = item.UpdatedParsed.Unix()
-			p.client.Post.CreatePost(&model.Post{
-				ChannelId: feed.ChannelId,
-				Message:   fmt.Sprintf("%s\n%s", item.Title, item.Link),
-			})
+			p.BotPost(feed.ChannelId, fmt.Sprintf("New feed: %s\n%s", item.Title, item.Link))
+
 		}
 	}
 	p.saveFeeds(feeds)
@@ -96,10 +105,22 @@ func (p *Plugin) OnActivate() error {
 		return err
 	}
 
+	botId, err := p.client.Bot.EnsureBot(&model.Bot{
+		Username:    botName,
+		DisplayName: botDisplayName,
+		Description: botDescription,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	p.botId = botId
+
 	job, err := cluster.Schedule(
 		p.API,
 		"BackgroundJob",
-		cluster.MakeWaitForRoundedInterval(20*time.Minute),
+		cluster.MakeWaitForRoundedInterval(fetchInterval),
 		p.fetchFeeds,
 	)
 
