@@ -10,15 +10,13 @@ import (
 	"github.com/mattermost/mattermost/server/public/plugin"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
 	"github.com/mattermost/mattermost/server/public/pluginapi/cluster"
+	"github.com/mmcdole/gofeed"
 )
 
 const trigger = "feed"
 const desc = "Manage your feeds"
 const hint = "[list|add|del] [url]"
 const kvkey = "feeds"
-const botName = "feedbot"
-const botDisplayName = "Feed Bot"
-const botDescription = "Feed Bot"
 
 type Feed struct {
 	Url       string
@@ -29,8 +27,13 @@ type Feed struct {
 type Plugin struct {
 	plugin.MattermostPlugin
 	client        *pluginapi.Client
-	botId         string
 	backgroundJob *cluster.Job
+}
+
+func response(text string) *model.CommandResponse {
+	return &model.CommandResponse{
+		Text: text,
+	}
 }
 
 func (p *Plugin) saveFeeds(feeds []Feed) (bool, error) {
@@ -45,8 +48,22 @@ func (p *Plugin) loadFeeds() []Feed {
 
 func (p *Plugin) fetchFeeds() {
 	feeds := p.loadFeeds()
+	fp := gofeed.NewParser()
 	for _, feed := range feeds {
-		fmt.Println("Fetching feed: " + feed.Url)
+		page, err := fp.ParseURL(feed.Url)
+		if err != nil {
+			p.client.Post.CreatePost(&model.Post{
+				ChannelId: feed.ChannelId,
+				Message:   fmt.Sprintf("Error fetching: %s", feed.Url),
+			})
+			continue
+		}
+		for _, item := range page.Items {
+			p.client.Post.CreatePost(&model.Post{
+				ChannelId: feed.ChannelId,
+				Message:   fmt.Sprintf("%s\n%s", item.Title, item.Link),
+			})
+		}
 	}
 }
 
@@ -65,18 +82,6 @@ func (p *Plugin) OnActivate() error {
 	if err != nil {
 		return err
 	}
-
-	botId, err := p.client.Bot.EnsureBot(&model.Bot{
-		Username:    botName,
-		DisplayName: botDisplayName,
-		Description: botDescription,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	p.botId = botId
 
 	job, err := cluster.Schedule(
 		p.API,
@@ -106,7 +111,7 @@ func (p *Plugin) OnDeactivate() error {
 	return nil
 }
 
-func valid(fields []string) bool {
+func validCommand(fields []string) bool {
 	if len(fields) < 2 {
 		return false
 	}
@@ -131,38 +136,41 @@ func valid(fields []string) bool {
 
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 	fields := strings.Fields(args.Command)
-	if !valid(fields) {
+	if !validCommand(fields) {
 		return response("Invalid command"), nil
 	}
+
 	switch fields[1] {
 	case "list":
-		return p.listFeeds()
+		return p.listFeeds(args.ChannelId)
 	case "add":
-		return p.addFeed(fields[2])
+		return p.addFeed(args.ChannelId, fields[2])
 	case "del":
-		return p.delFeed(fields[2])
+		return p.delFeed(args.ChannelId, fields[2])
 	}
 	return response("Invalid command"), nil
 }
 
-func (p *Plugin) listFeeds() (*model.CommandResponse, *model.AppError) {
+func (p *Plugin) listFeeds(channelId string) (*model.CommandResponse, *model.AppError) {
 	feeds := p.loadFeeds()
 	text := "Feeds:\n"
 	for _, feed := range feeds {
+		if feed.ChannelId != channelId {
+			continue
+		}
 		text += feed.Url + "\n"
 	}
 	return response(text), nil
 }
 
-func response(text string) *model.CommandResponse {
-	return &model.CommandResponse{
-		Text: text,
-	}
-}
-
-func (p *Plugin) addFeed(url string) (*model.CommandResponse, *model.AppError) {
+func (p *Plugin) addFeed(channelId string, url string) (*model.CommandResponse, *model.AppError) {
 	feeds := p.loadFeeds()
-	feeds = append(feeds, Feed{Url: url, Updated: time.Now().Format(time.RFC3339)})
+	feeds = append(feeds,
+		Feed{
+			Url:       url,
+			ChannelId: channelId,
+			Updated:   time.Now().Format(time.RFC3339),
+		})
 	sucess, _ := p.saveFeeds(feeds)
 
 	if sucess {
@@ -171,7 +179,7 @@ func (p *Plugin) addFeed(url string) (*model.CommandResponse, *model.AppError) {
 	return response("Feed not added"), nil
 }
 
-func (p *Plugin) delFeed(url string) (*model.CommandResponse, *model.AppError) {
+func (p *Plugin) delFeed(channelId string, url string) (*model.CommandResponse, *model.AppError) {
 	if url == "all" {
 		err := p.client.KV.Delete(kvkey)
 		if err != nil {
@@ -181,6 +189,9 @@ func (p *Plugin) delFeed(url string) (*model.CommandResponse, *model.AppError) {
 	}
 	feeds := p.loadFeeds()
 	for i, feed := range feeds {
+		if feed.ChannelId != channelId {
+			continue
+		}
 		if feed.Url == url {
 			feeds = slices.Delete(feeds, i, i+1)
 			sucess, _ := p.saveFeeds(feeds)
