@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,7 +21,7 @@ const kvkey = "feeds"
 
 type Feed struct {
 	Url       string
-	Updated   string
+	Updated   int64
 	ChannelId string
 }
 
@@ -58,13 +59,25 @@ func (p *Plugin) fetchFeeds() {
 			})
 			continue
 		}
-		for _, item := range page.Items {
+		items := page.Items
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].UpdatedParsed.Before(*items[j].UpdatedParsed)
+		})
+		for _, item := range items {
+			if item.UpdatedParsed == nil {
+				continue
+			}
+			if item.UpdatedParsed.Unix() < feed.Updated {
+				continue
+			}
+			feed.Updated = item.UpdatedParsed.Unix()
 			p.client.Post.CreatePost(&model.Post{
 				ChannelId: feed.ChannelId,
 				Message:   fmt.Sprintf("%s\n%s", item.Title, item.Link),
 			})
 		}
 	}
+	p.saveFeeds(feeds)
 }
 
 func (p *Plugin) OnActivate() error {
@@ -169,7 +182,7 @@ func (p *Plugin) addFeed(channelId string, url string) (*model.CommandResponse, 
 		Feed{
 			Url:       url,
 			ChannelId: channelId,
-			Updated:   time.Now().Format(time.RFC3339),
+			Updated:   time.Now().Unix(),
 		})
 	sucess, _ := p.saveFeeds(feeds)
 
