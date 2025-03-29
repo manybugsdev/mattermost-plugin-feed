@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -21,7 +23,7 @@ const kvkey = "feeds"
 const botName = "feedbot"
 const botDisplayName = "Feed Bot"
 const botDescription = "Feed Bot"
-const fetchInterval = 1 * time.Minute
+const fetchInterval = 20 * time.Minute
 
 type Feed struct {
 	Url       string
@@ -60,14 +62,37 @@ func (p *Plugin) loadFeeds() []Feed {
 	return feeds
 }
 
+func httpGet(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error: %s", resp.Status)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+
+}
+
 func (p *Plugin) fetchFeeds() {
 	feeds := p.loadFeeds()
 	fp := gofeed.NewParser()
 	for _, feed := range feeds {
-		p.BotPost(feed.ChannelId, "hi all")
-		page, err := fp.ParseURL(feed.Url)
+		// Don't use ParseURL, it doesn't work at https://blogs.oracle.com/oracle4engineer/rss.
+		// It returns a 403 error when fetching with the user agent of gofeed.
+		body, err := httpGet(feed.Url)
 		if err != nil {
 			p.BotPost(feed.ChannelId, fmt.Sprintf("Error fetching: %s", feed.Url))
+			continue
+		}
+		page, err := fp.ParseString(string(body))
+		if err != nil {
+			p.BotPost(feed.ChannelId, fmt.Sprintf("Error parsing: %s", feed.Url))
 			continue
 		}
 		items := page.Items
