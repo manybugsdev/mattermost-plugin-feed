@@ -22,6 +22,12 @@ func (p *Plugin) OnActivate() error {
 
 	p.botID = botID
 
+	err = p.SetFeedBotProfileImage()
+
+	if err != nil {
+		return err
+	}
+
 	job, err := p.ScheduleJob()
 
 	if err != nil {

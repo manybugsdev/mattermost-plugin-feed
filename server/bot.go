@@ -1,8 +1,9 @@
 package main
 
 import (
-	"os"
-	"path"
+	"bytes"
+
+	_ "embed"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -11,27 +12,20 @@ const BotName = "feed"
 const BotDisplayName = "Feed"
 const BotDescription = "Bot for Feed Plugin"
 
+//go:embed icon1024x1024.png
+var botImage []byte
+
 func (p *Plugin) EnsureFeedBot() (string, error) {
 	botID, err := p.client.Bot.EnsureBot(&model.Bot{
 		Username:    BotName,
 		DisplayName: BotDisplayName,
 		Description: BotDescription,
 	})
-	p.SetFeedBotProfileImage()
 	return botID, err
 }
 
-func (p *Plugin) SetFeedBotProfileImage() {
-	file, err := os.Open(path.Join("assets", "icon1024x1024.png"))
-	if err != nil {
-		p.client.Log.Error("Error opening profile image: " + err.Error())
-		return
-	}
-	defer file.Close()
-	err = p.client.User.SetProfileImage(p.botID, file)
-	if err != nil {
-		p.client.Log.Error("Error setting profile image: " + err.Error())
-	}
+func (p *Plugin) SetFeedBotProfileImage() error {
+	return p.client.User.SetProfileImage(p.botID, bytes.NewReader(botImage))
 }
 
 func (p *Plugin) BotPost(channelID string, text string) {
