@@ -12,13 +12,13 @@ const BotDisplayName = "Feed"
 const BotDescription = "Bot for Feed Plugin"
 
 func (p *Plugin) EnsureFeedBot() (string, error) {
-	botId, err := p.client.Bot.EnsureBot(&model.Bot{
+	botID, err := p.client.Bot.EnsureBot(&model.Bot{
 		Username:    BotName,
 		DisplayName: BotDisplayName,
 		Description: BotDescription,
 	})
 	p.SetFeedBotProfileImage()
-	return botId, err
+	return botID, err
 }
 
 func (p *Plugin) SetFeedBotProfileImage() {
