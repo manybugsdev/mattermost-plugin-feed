@@ -7,7 +7,7 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
-const BotName = "Feed"
+const BotName = "feed"
 const BotDisplayName = "Feed"
 const BotDescription = "Bot for Feed Plugin"
 
