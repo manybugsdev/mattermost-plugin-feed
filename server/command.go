@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -49,7 +50,7 @@ Usage: /feed <command> [args]
 	List all feeds
 /feed add <url>
 	Add a feed
-/feed del <url>
+/feed del <url_or_index>
 	Delete a feed
 /feed help
 	Show this help
@@ -106,22 +107,22 @@ func (p *Plugin) AddFeed(args *model.CommandArgs, url string) *model.CommandResp
 	return response("Error: unable to save feeds")
 }
 
-func (p *Plugin) DelFeed(args *model.CommandArgs, url string) *model.CommandResponse {
+func (p *Plugin) DelFeed(args *model.CommandArgs, urlOrIndex string) *model.CommandResponse {
 	feeds := p.LoadFeeds()
 	for i, feed := range feeds {
 		if feed.ChannelID != args.ChannelId {
 			continue
 		}
-		if feed.URL == url {
+		if feed.URL == urlOrIndex || fmt.Sprint(i+1) == urlOrIndex {
 			feeds = slices.Delete(feeds, i, i+1)
 			success, _ := p.SaveFeeds(feeds)
 			if success {
 				userName := p.GetUserName(args.UserId)
-				p.BotPost(args.ChannelId, "**Feed deleted!**\n\n"+url+" by @"+userName)
+				p.BotPost(args.ChannelId, "**Feed deleted!**\n\n"+feed.URL+" by @"+userName)
 				return response("")
 			}
 			return response("Error: unable to save feeds")
 		}
 	}
-	return response(url + " is not found in this channel. Please check the URL and try again.")
+	return response(urlOrIndex + " is not found in this channel. Please check the URL and try again.")
 }
