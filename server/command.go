@@ -13,20 +13,27 @@ const CommandTrigger = "feed"
 const CommandDescription = "Manage your feeds"
 
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
-	fields := strings.Fields(args.Command)
-	if !validCommand(fields) {
-		return response("Invalid command"), nil
+	commands := strings.Fields(args.Command)
+	if len(commands) < 2 || commands[0] != "/feed" {
+		return responseHelp(), nil
 	}
-
-	switch fields[1] {
+	subCommand := commands[1]
+	switch subCommand {
+	case "help":
+		return responseHelp(), nil
 	case "list":
-		return p.ListFeeds(args.ChannelId)
-	case "add":
-		return p.AddFeed(args.ChannelId, fields[2])
-	case "del":
-		return p.DelFeed(args.ChannelId, fields[2])
+		return p.ListFeeds(args), nil
 	}
-	return response("Invalid command"), nil
+	if len(commands) != 3 {
+		return responseHelp(), nil
+	}
+	switch subCommand {
+	case "add":
+		return p.AddFeed(args, commands[2]), nil
+	case "del":
+		return p.DelFeed(args, commands[2]), nil
+	}
+	return responseHelp(), nil
 }
 
 func response(text string) *model.CommandResponse {
@@ -35,27 +42,26 @@ func response(text string) *model.CommandResponse {
 	}
 }
 
-func validCommand(fields []string) bool {
-	if len(fields) < 2 {
-		return false
+func responseHelp() *model.CommandResponse {
+	return response("```" + `
+Usage: /feed <command> [args]
+/feed list
+	List all feeds
+/feed add <url>
+	Add a feed
+/feed del <url>
+	Delete a feed
+/feed help
+	Show this help
+` + "```")
+}
+
+func (p *Plugin) GetUserName(userID string) string {
+	user, err := p.client.User.Get(userID)
+	if err != nil {
+		return "anonymous"
 	}
-	if fields[0] != "/feed" {
-		return false
-	}
-	sub := fields[1]
-	if sub != "list" && sub != "add" && sub != "del" {
-		return false
-	}
-	if sub == "list" && len(fields) != 2 {
-		return false
-	}
-	if sub == "add" && len(fields) != 3 {
-		return false
-	}
-	if sub == "del" && len(fields) != 3 {
-		return false
-	}
-	return true
+	return user.Username
 }
 
 func (p *Plugin) RegisterFeedCommand() error {
@@ -70,48 +76,52 @@ func (p *Plugin) UnregisterFeedCommand() error {
 	return p.client.SlashCommand.Unregister("", CommandTrigger)
 }
 
-func (p *Plugin) ListFeeds(channelID string) (*model.CommandResponse, *model.AppError) {
+func (p *Plugin) ListFeeds(args *model.CommandArgs) *model.CommandResponse {
 	feeds := p.LoadFeeds()
-	text := "Feeds:\n"
+	text := "Feeds in this channel:\n\n"
 	for _, feed := range feeds {
-		if feed.ChannelID != channelID {
+		if feed.ChannelID != args.ChannelId {
 			continue
 		}
-		text += feed.URL + "\n"
+		text += "1. " + feed.URL + "\n"
 	}
-	return response(text), nil
+	return response(text)
 }
 
-func (p *Plugin) AddFeed(channelID string, url string) (*model.CommandResponse, *model.AppError) {
+func (p *Plugin) AddFeed(args *model.CommandArgs, url string) *model.CommandResponse {
 	feeds := p.LoadFeeds()
 	feeds = append(feeds,
 		Feed{
 			URL:       url,
-			ChannelID: channelID,
+			ChannelID: args.ChannelId,
 			Updated:   time.Now().Unix(),
 		})
 	success, _ := p.SaveFeeds(feeds)
-
 	if success {
-		return response("Feed added"), nil
+		userName := p.GetUserName(args.UserId)
+		p.BotPost(args.ChannelId,
+			"**New feed added!**\n\n"+url+" by @"+userName)
+		return response("")
 	}
-	return response("Feed not added"), nil
+	return response("Error: unable to save feeds")
 }
 
-func (p *Plugin) DelFeed(channelID string, url string) (*model.CommandResponse, *model.AppError) {
+func (p *Plugin) DelFeed(args *model.CommandArgs, url string) *model.CommandResponse {
 	feeds := p.LoadFeeds()
 	for i, feed := range feeds {
-		if feed.ChannelID != channelID {
+		if feed.ChannelID != args.ChannelId {
 			continue
 		}
 		if feed.URL == url {
 			feeds = slices.Delete(feeds, i, i+1)
 			success, _ := p.SaveFeeds(feeds)
 			if success {
-				return response("Feed deleted"), nil
+				userName := p.GetUserName(args.UserId)
+				p.BotPost(args.ChannelId, "**Feed deleted!**\n\n"+url+" by @"+userName)
+				return response("")
 			}
-			return response("Feed not deleted"), nil
+			return response("Error: unable to save feeds")
 		}
 	}
-	return response("Feed not found"), nil
+	return response(url + " is not found in this channel. Please check the URL and try again.")
 }
