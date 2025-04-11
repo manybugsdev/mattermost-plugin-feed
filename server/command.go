@@ -11,7 +11,6 @@ import (
 
 const CommandTrigger = "feed"
 const CommandDescription = "Manage your feeds"
-const CommandHint = "[list|add|del] [url]"
 
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 	fields := strings.Fields(args.Command)
@@ -64,8 +63,6 @@ func (p *Plugin) RegisterFeedCommand() error {
 		Trigger:          CommandTrigger,
 		AutoComplete:     true,
 		AutoCompleteDesc: CommandDescription,
-		AutoCompleteHint: CommandHint,
-		AutocompleteData: model.NewAutocompleteData(CommandTrigger, CommandHint, CommandDescription),
 	})
 }
 
