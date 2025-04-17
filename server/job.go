@@ -29,9 +29,9 @@ func (p *Plugin) UnscheduleJob() error {
 }
 
 func getDate(item *gofeed.Item) *time.Time {
-	date := item.UpdatedParsed
+	date := item.PublishedParsed
 	if date == nil {
-		date = item.PublishedParsed
+		date = item.UpdatedParsed
 	}
 	return date
 }
