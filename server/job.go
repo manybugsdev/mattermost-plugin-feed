@@ -85,7 +85,7 @@ func (p *Plugin) FetchFeeds() {
 		}
 		items = itemsValid
 		for _, item := range items {
-			p.BotPost(feed.ChannelID, fmt.Sprintf("%s\n%s", item.Title, item.Link))
+			p.BotPost(feed.ChannelID, fmt.Sprintf("%s | %s\n%s", item.Title, page.Title, item.Link))
 		}
 		latest := feed.Updated
 		for _, item := range items {
