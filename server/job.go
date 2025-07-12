@@ -65,12 +65,12 @@ func (p *Plugin) FetchFeeds() {
 		// It returns a 403 error when fetching with the user agent of gofeed.
 		body, err := httpGet(feed.URL)
 		if err != nil {
-			p.BotPost(feed.ChannelID, fmt.Sprintf("Error fetching: %s", feed.URL))
+			p.client.Log.Error(fmt.Sprintf("Error fetching: %s", feed.URL))
 			continue
 		}
 		page, err := fp.ParseString(string(body))
 		if err != nil {
-			p.BotPost(feed.ChannelID, fmt.Sprintf("Error parsing: %s", feed.URL))
+			p.client.Log.Error(fmt.Sprintf("Error parsing: %s", feed.URL))
 			continue
 		}
 		items := page.Items
